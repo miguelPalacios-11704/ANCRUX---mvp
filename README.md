@@ -275,7 +275,7 @@ STARKNET_PRIVATE_KEY=0x...
 # LND_URL
 # LND_MACAROON_HEX
 # LND_TLS_CERT_B64
-
+```
 ---
 
 ### Integración Profunda con Starknet.js
