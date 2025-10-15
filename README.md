@@ -210,6 +210,90 @@ Las contribuciones son bienvenidas. Por favor:
 4. Push a la rama (`git push origin feature/AmazingFeature`)
 5. Abre un Pull Request
 
+---
+
+## Actualización: Migración de Lightning a Chipi Pay SDK en server_strk_chipi.js
+
+El sistema de pago de este proyecto ha sido completamente refactorizado, reemplazando la integración con **Lightning Network (LND)** por el **SDK de Chipi Pay**. Este cambio estratégico simplifica el flujo de pago, elimina la necesidad de que los usuarios gestionen canales de Lightning y permite transacciones *gasless* (sin costo de gas para el usuario) directamente en la red de **Starknet**. ⛓️
+
+### Nuevas Características
+
+-   **Billetera Integrada**: Los usuarios pueden crear una billetera de Starknet directamente a través de la API, protegida por un PIN.
+-   **Transacciones Gasless**: Chipi Pay actúa como un *paymaster*, cubriendo las tarifas de gas de la red para la acuñación (minting) del NFT que representa la propiedad.
+-   **Flujo de Pago Directo**: Se elimina el sistema de facturas (invoices). El pago es ahora una ejecución de transacción directa en la blockchain.
+
+---
+
+### Tecnologías Actualizadas
+
+-   **Chipi Pay SDK**: Para la creación de billeteras y la ejecución de transacciones en Starknet.
+-   **Starknet.js**: Utilizado para la conexión con la red de Starknet y la verificación de transacciones y propiedad de NFTs.
+-   ~~Lightning Network~~: **Eliminado del proyecto.**
+
+---
+
+### Nueva Arquitectura y Flujo de Trabajo
+
+El flujo de pago ha cambiado de un modelo basado en facturas a uno basado en transacciones directas.
+
+1.  **Creación de Wallet (Nuevo)**: El cliente primero crea una wallet de Chipi Pay a través de la API, especificando un PIN. El cliente debe **guardar de forma segura** las credenciales devueltas (`publicKey` y `encryptedPrivateKey`).
+2.  **Upload**: Este paso no cambia. El video se sube y se cifra en el servidor.
+3.  **Ejecución de Pago**: En lugar de solicitar una factura, el cliente llama al endpoint de pago con las credenciales de su wallet y su PIN. El servidor utiliza el SDK de Chipi Pay para ejecutar directamente la transacción de `mint` del NFT en el contrato de Starknet.
+4.  **Verificación y Desbloqueo**: El servidor ahora verifica el estado de la transacción en la blockchain usando el hash de la transacción. Una vez que la transacción se confirma (`settled`), se considera pagado, y el cliente puede solicitar las claves de descifrado.
+
+---
+
+### Endpoints Modificados y Nuevos
+
+-   `POST /wallet/create` **(Nuevo)**: Crea una nueva billetera de Chipi Pay para el usuario.
+-   `POST /pay/:id` **(Modificado)**: Ejecuta directamente la transacción de pago y acuñación del NFT. Ya no genera una factura.
+-   `GET /pay/:id/status` **(Modificado)**: Verifica el estado de una transacción en la blockchain usando su hash, en lugar de verificar una factura Lightning.
+
+---
+
+### Nueva Configuración
+
+Actualiza tu archivo `.env` para eliminar las variables de LND y agregar las de Chipi Pay y Starknet.
+
+```bash
+# Clave maestra para key wrapping (sin cambios)
+MASTER_KEY_BASE64=tu_clave_maestra_base64_aqui
+
+# --- NUEVA CONFIGURACIÓN CHIPI PAY ---
+CHIPI_PAYMASTER_API_KEY=tu_api_key_de_chipi_paymaster
+CHIPI_RPC_URL=[https://starknet-goerli.infura.io/v3/tu_api_key_de_infura_o_similar](https://starknet-goerli.infura.io/v3/tu_api_key_de_infura_o_similar)
+
+# --- CONFIGURACIÓN STARKNET (Sigue siendo necesaria) ---
+STARKNET_NFT_CONTRACT_ADDRESS=0x...
+STARKNET_NFT_ABI_PATH=./path/to/your/nft_abi.json
+# STARKNET_ACCOUNT_ADDRESS y STARKNET_PRIVATE_KEY ya no son para pagos,
+# pero el script los usa para conectar el contrato y llamar a funciones de solo lectura.
+STARKNET_ACCOUNT_ADDRESS=0x...
+STARKNET_PRIVATE_KEY=0x...
+
+# --- VARIABLES LND (ELIMINADAS) ---
+# LND_URL
+# LND_MACAROON_HEX
+# LND_TLS_CERT_B64
+
+---
+
+### Integración Profunda con Starknet.js
+
+Aunque el SDK de Chipi Pay se encarga de la ejecución de la transacción de pago, la librería **`starknet.js`** es fundamental para que nuestro backend pueda interactuar y verificar el estado directamente en la blockchain de Starknet. Esto asegura un sistema robusto y descentralizado.
+
+Las responsabilidades clave de `starknet.js` en este proyecto son:
+
+1.  **Conexión con la Red**: Se inicializa un `Provider` de `starknet.js` que conecta el servidor a un nodo de la red.
+ Esta conexión es esencialmente de solo lectura y permite consultar el estado de la blockchain en tiempo real, como el estado de una transacción o la información almacenada en un contrato.
+
+2.  **Verificación del Estado de la Transacción**: En el endpoint `GET /pay/:id/status`, se utiliza la función `provider.waitForTransaction()`. 
+Esta función toma el hash de la transacción devuelto por Chipi Pay y sondea la red hasta que la transacción es aceptada y confirmada en un bloque de Starknet. Este es el mecanismo principal y más seguro para confirmar que un pago ha sido exitoso.
+
+3.  **Lectura del Estado del Contrato**: Para verificar la propiedad de un NFT (y así autorizar el acceso a las claves de descifrado 
+en el endpoint `GET /keys/:id`), el backend utiliza una instancia del `Contract` de `starknet.js` para llamar a la función de vista `ownerOf`. 
+Esto permite preguntar directamente a la blockchain quién es el dueño de un token específico, asegurando que solo el pagador correcto pueda acceder al contenido cifrado.
+
 ## Contacto
 
 Para preguntas o soporte, abre un issue en GitHub.
